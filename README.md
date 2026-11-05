@@ -46,8 +46,18 @@ cp .env.example .env
 # Development (with auto-reload)
 npm run dev
 
-# Production
+# Production (Node direct)
 npm start
+
+# Production (PM2 Process Manager)
+npm run pm2:start
+
+# PM2 Management Commands
+npm run pm2:logs     # Stream live server logs
+npm run pm2:restart  # Restart server process
+npm run pm2:reload   # Zero-downtime reload
+npm run pm2:stop     # Stop server
+npm run pm2:monit    # Live CPU / Memory dashboard
 ```
 Default port: `3100` (`http://localhost:3100`).
 
