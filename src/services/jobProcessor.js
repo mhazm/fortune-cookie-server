@@ -5,17 +5,46 @@ const SYSTEM_MANAGER_ID = "NISMARA_TRACKER_SYSTEM";
 const CANCEL_PENALTY_POINTS = 5;
 
 function mapGameName(gameId) {
-  if (String(gameId) === "2" || String(gameId).toLowerCase() === "ats") {
+  const g = String(gameId || "").toLowerCase();
+  if (g === "2" || g === "ats" || g === "amtrucks" || g.includes("american")) {
     return "American Truck Simulator";
   }
   return "Euro Truck Simulator 2";
 }
 
 function normalizeGameId(gameId) {
-  if (String(gameId) === "2" || String(gameId).toLowerCase() === "ats") {
+  const g = String(gameId || "").toLowerCase();
+  if (g === "2" || g === "ats" || g === "amtrucks" || g.includes("american")) {
     return "2";
   }
   return "1";
+}
+
+/**
+ * Classifies trip speed into Real Miles, Race Miles, or Invalid Stats
+ * ETS2: Real Miles <= 100 km/h, Race Miles 101 - 180 km/h, Invalid > 180 km/h
+ * ATS: Real Miles <= 80 mph (~128.75 km/h), Race Miles 81 - 130 mph (~209.2 km/h), Invalid > 130 mph (~209.2 km/h)
+ */
+export function getSpeedCategory(maxSpeedKmh, gameId) {
+  const isAts = String(gameId) === "2" || String(gameId).toLowerCase() === "ats" || String(gameId).toLowerCase() === "amtrucks";
+  if (isAts) {
+    const speedMph = maxSpeedKmh / 1.609344;
+    if (speedMph > 130.0 || maxSpeedKmh > 209.2) {
+      return "Invalid Stats";
+    }
+    if (speedMph > 80.0 || maxSpeedKmh > 128.75) {
+      return "Race Miles";
+    }
+    return "Real Miles";
+  } else {
+    if (maxSpeedKmh > 180.0) {
+      return "Invalid Stats";
+    }
+    if (maxSpeedKmh > 100.0) {
+      return "Race Miles";
+    }
+    return "Real Miles";
+  }
 }
 
 function normalizeGameMode(serverMode) {
@@ -96,7 +125,7 @@ function calcSpeedPenalty(statsType) {
 /**
  * Hardcore Mode Simulation Evaluator, Hardcore Points (HP) & 5-Star Delivery Rating
  */
-function evaluateHardcore(payload, km, massTons, fuelUsedL, vehicleDmg, trailerDmg, cargoDmg, statsType, durationSec, finesCount, isRepetitiveRoute) {
+function evaluateHardcore(payload, driverJob, km, massTons, fuelUsedL, vehicleDmg, trailerDmg, cargoDmg, statsType, durationSec, finesCount, isRepetitiveRoute) {
   const isLate = Boolean(payload.isLate);
   const autoParkUsed = Boolean(payload.autoParkUsed);
   const warpDetected = Boolean(payload.warpDetected);
@@ -105,8 +134,8 @@ function evaluateHardcore(payload, km, massTons, fuelUsedL, vehicleDmg, trailerD
   const speedingSec = Number(payload.speedingSeconds || 0);
   const hcSettings = payload.hardcoreSettings || {};
 
-  // Check 9 mandatory profile settings
-  const settingsValid = Boolean(
+  // Check 9 mandatory profile settings at finish
+  const settingsValidAtFinish = Boolean(
     hcSettings.trafficOk &&
     hcSettings.fatigueOk &&
     hcSettings.policeOk &&
@@ -119,14 +148,32 @@ function evaluateHardcore(payload, km, massTons, fuelUsedL, vehicleDmg, trailerD
   );
 
   const reasons = [];
+
+  // 1. Initial State Check (Must have been eligible when job started)
+  if (driverJob && driverJob.isHardcoreEligibleAtStart === false) {
+    reasons.push(driverJob.hardcoreDisqualifyReason || "Not Eligible for Hardcore at Job Start (Settings Incomplete or Mod Active)");
+  }
+
+  // 2. Mid-trip Disqualification / Tampering Check (Client latched flag)
+  if (Boolean(payload.hardcoreDisqualifiedDuringTrip)) {
+    reasons.push(payload.hardcoreMidTripReason || "Hardcore Disqualified During Trip (Settings Tampered or Violation)");
+  } else if (driverJob && driverJob.hardcoreDisqualified) {
+    reasons.push(driverJob.hardcoreDisqualifyReason || "Hardcore Disqualified During Trip");
+  }
+
+  // 3. Finish State & Rules Check
   if (hasForbiddenMods) reasons.push("Forbidden Mod Detected");
-  if (!settingsValid) reasons.push("Game Profile Settings Incomplete (9 Required)");
+  if (!settingsValidAtFinish) reasons.push("Game Profile Settings Incomplete at Finish (9 Required)");
   if (autoParkUsed) reasons.push("Auto Park / Auto Load Used");
   if (warpDetected) reasons.push("Warping / Speedhack Detected");
   if (km < 250) reasons.push("Distance < 250 km");
   if (massTons <= 0) reasons.push("Cargo Mass is 0");
   if (fuelUsedL <= 0) reasons.push("Fuel Used is 0");
-  if (statsType !== "Real Miles") reasons.push(`Speed exceeded Real Miles (${statsType})`);
+  if (statsType !== "Real Miles") {
+    const isAts = String(driverJob?.gameId || payload.gameId) === "2" || String(driverJob?.game || "").includes("American");
+    const speedLimitStr = isAts ? "80 mph / 129 km/h" : "100 km/h";
+    reasons.push(`Speed exceeded Real Miles (${statsType} > ${speedLimitStr})`);
+  }
   if (isRepetitiveRoute) reasons.push("Repetitive Route within 24h");
 
   const isEligible = reasons.length === 0;
@@ -336,9 +383,14 @@ export async function processJobStart(db, user, payload) {
       return {
         resumed: true,
         jobId: String(existingOngoing.jobId),
+        gameId: String(existingOngoing.gameId || gameId),
+        game: existingOngoing.game || gameName,
         lockedCargoPrice: existingOngoing.lockedCargoPrice ?? 1.5,
         isSpecialContract: Boolean(existingOngoing.isSpecialContract),
         gameMode: existingOngoing.gameMode || gameMode,
+        isHardcoreEligibleAtStart: existingOngoing.isHardcoreEligibleAtStart ?? true,
+        hardcoreDisqualified: Boolean(existingOngoing.hardcoreDisqualified),
+        hardcoreDisqualifyReason: existingOngoing.hardcoreDisqualifyReason || null,
       };
     }
 
@@ -483,6 +535,27 @@ export async function processJobStart(db, user, payload) {
       };
 
   const now = new Date();
+  // Validate Hardcore Simulation Eligibility at Job Start
+  const hcSettings = payload.hardcoreSettings || {};
+  const hasForbiddenMods = Boolean(payload.hasForbiddenMods);
+  const settingsValidAtStart = Boolean(
+    hcSettings.trafficOk &&
+    hcSettings.fatigueOk &&
+    hcSettings.policeOk &&
+    hcSettings.parkingOk &&
+    hcSettings.roadEventsOk &&
+    hcSettings.rainProbOk &&
+    hcSettings.advancedCouplingOk &&
+    hcSettings.fuelSimOk &&
+    hcSettings.airBrakeOk
+  );
+
+  const startDisqualifyReasons = [];
+  if (hasForbiddenMods) startDisqualifyReasons.push("Forbidden Mod Detected at Job Start");
+  if (!settingsValidAtStart) startDisqualifyReasons.push("Game Profile Settings Incomplete at Job Start (9 Required)");
+
+  const isHardcoreEligibleAtStart = startDisqualifyReasons.length === 0;
+
   const newJobDoc = {
     guildId: NISMARA_GUILD_ID,
     jobId: jobId,
@@ -514,6 +587,11 @@ export async function processJobStart(db, user, payload) {
     marketFuelPricePerL: 0,
     isHardcore: false,
     hardcoreRating: 0,
+    isHardcoreEligibleAtStart: isHardcoreEligibleAtStart,
+    hardcoreDisqualified: !isHardcoreEligibleAtStart,
+    hardcoreDisqualifyReason: isHardcoreEligibleAtStart ? null : startDisqualifyReasons.join("; "),
+    hardcoreSettingsAtStart: hcSettings,
+    hasForbiddenModsAtStart: hasForbiddenMods,
     discount: {
       nismaraplus: 0,
       insurance: 0,
@@ -532,16 +610,20 @@ export async function processJobStart(db, user, payload) {
   await db.collection("jobhistories").insertOne(newJobDoc);
 
   console.log(
-    `[Job Start] Job #${jobId} started by ${user.name} (${discordId}) | ${sourceCity} -> ${destinationCity} | Mode: ${gameMode} | Fleet: ${fleetDataObj.fleet_number || "Rental/None"}`
+    `[Job Start] Job #${jobId} started by ${user.name} (${discordId}) | ${sourceCity} -> ${destinationCity} | Mode: ${gameMode} | Fleet: ${fleetDataObj.fleet_number || "Rental/None"} | Hardcore at Start: ${isHardcoreEligibleAtStart ? "YES" : "NO (" + startDisqualifyReasons.join("; ") + ")"}`
   );
 
   return {
     resumed: false,
     jobId: jobId,
+    gameId: gameId,
+    game: gameName,
     lockedCargoPrice: lockedCargoPrice,
     isSpecialContract: isSpecialContract,
     gameMode: gameMode,
     fleetNumber: fleetDataObj.fleet_number,
+    isHardcoreEligibleAtStart: isHardcoreEligibleAtStart,
+    hardcoreDisqualifyReason: isHardcoreEligibleAtStart ? null : startDisqualifyReasons.join("; "),
   };
 }
 
@@ -858,12 +940,7 @@ export async function processJobComplete(db, user, payload) {
   // =========================================================================
   // 2. SPEED CLASSIFICATION & HARDCORE SIMULATION EVALUATION
   // =========================================================================
-  let statsType = "Real Miles";
-  if (maxSpeedKmh > 180.0) {
-    statsType = "Invalid Stats";
-  } else if (maxSpeedKmh > 100.0) {
-    statsType = "Race Miles";
-  }
+  const statsType = getSpeedCategory(maxSpeedKmh, gameId);
 
   // Anti-Repetitive Route check (same driver, same source & destination in last 24 hours)
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -880,6 +957,7 @@ export async function processJobComplete(db, user, payload) {
   const finesCount = finesEvents.length;
   const hcEval = evaluateHardcore(
     payload,
+    driverJob,
     km,
     massTons,
     fuelUsedL,
@@ -1166,6 +1244,8 @@ export async function processJobComplete(db, user, payload) {
     { _id: driverJob._id },
     {
       $set: {
+        gameId: gameId,
+        game: gameName,
         gameMode: gameMode,
         statsType: statsType,
         jobStatus: "COMPLETED",
@@ -1176,6 +1256,8 @@ export async function processJobComplete(db, user, payload) {
         isHardcore: hcEval.isEligible,
         hardcoreRating: hcEval.deliveryRating.totalStars,
         hardcorePoints: hcEval.hardcorePoints,
+        isHardcoreEligibleAtStart: driverJob.isHardcoreEligibleAtStart ?? true,
+        hardcoreDisqualifiedDuringTrip: Boolean(payload.hardcoreDisqualifiedDuringTrip),
         deliveryRating: hcEval.deliveryRating,
         hardcoreDisqualifyReason: hcEval.disqualifyReason,
         hardcoreStats: hcEval.hardcoreStats,
@@ -1277,6 +1359,8 @@ export async function processJobComplete(db, user, payload) {
 
   return {
     jobId,
+    gameId,
+    game: gameName,
     gameMode,
     statsType,
     distanceKm: km,
@@ -1291,7 +1375,10 @@ export async function processJobComplete(db, user, payload) {
     xp,
     penalty,
     fleetNumber: fleetDataObj.fleet_number,
+    isHardcore: hcEval.isEligible,
     hardcoreEligible: hcEval.isEligible,
+    isHardcoreEligibleAtStart: driverJob.isHardcoreEligibleAtStart ?? true,
+    hardcoreDisqualifiedDuringTrip: Boolean(payload.hardcoreDisqualifiedDuringTrip),
     hardcorePoints: hcEval.hardcorePoints,
     deliveryStars: hcEval.deliveryRating.totalStars,
     deliveryRating: hcEval.deliveryRating,

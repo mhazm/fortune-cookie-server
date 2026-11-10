@@ -7,6 +7,7 @@ import jobsRoutes from "./src/routes/jobs.routes.js";
 import pointsRoutes from "./src/routes/points.routes.js";
 import updaterRoutes from "./src/routes/updater.routes.js";
 import eventsRoutes from "./src/routes/events.routes.js";
+import newsRoutes from "./src/routes/news.routes.js";
 
 dotenv.config();
 
@@ -43,6 +44,8 @@ app.use("/api/tracker", jobsRoutes);
 app.use("/api/tracker/points", pointsRoutes);
 app.use("/api/tracker", updaterRoutes);
 app.use("/api/tracker/events", eventsRoutes);
+app.use("/api/tracker/news", newsRoutes);
+app.use("/api/tracker/articles", newsRoutes);
 
 async function bootstrap() {
   try {

@@ -15,8 +15,13 @@ const handleMeRequest = async (req, res) => {
     const db = req.db;
     const now = new Date();
 
-    const rawGameId = String(req.body?.gameId || req.headers["x-game-id"] || "").toLowerCase();
-    const mappedGameId = rawGameId === "ats" || rawGameId === "2" ? "2" : rawGameId === "eut2" || rawGameId === "ets2" || rawGameId === "1" ? "1" : "";
+    const rawGameId = String(req.body?.gameId || req.headers["x-game-id"] || req.query?.gameId || "").toLowerCase();
+    const mappedGameId =
+      rawGameId === "ats" || rawGameId === "amtrucks" || rawGameId === "2"
+        ? "2"
+        : rawGameId === "eut2" || rawGameId === "ets2" || rawGameId === "1"
+        ? "1"
+        : "";
     const ongoingFilter = {
       guildId: NISMARA_GUILD_ID,
       driverId: String(user.discordId),
@@ -86,7 +91,7 @@ const handleMeRequest = async (req, res) => {
         ])
         .toArray(),
       user.discordId
-        ? db.collection("jobhistories").findOne(ongoingFilter)
+        ? db.collection("jobhistories").findOne(ongoingFilter, { sort: { createdAt: -1 } })
         : Promise.resolve(null),
       db.collection("guildsettings").findOne({ guildId: NISMARA_GUILD_ID }),
     ]);
@@ -230,11 +235,29 @@ const handleMeRequest = async (req, res) => {
               status: garageDoc.status || "operational",
               fleetSlot: garageDoc.fleetSlot ?? 1,
               fleetSlotUsed: garageDoc.fleetSlotUsed ?? 0,
+              fleetSlotLevel: garageDoc.fleetSlotLevel ?? garageDoc.fleetSlot ?? 1,
               fuelCapacity: garageDoc.fuelCapacity ?? 2000,
               fuelStock: garageDoc.fuelStock ?? 0,
+              fuelTankLevel:
+                garageDoc.fuelTankLevel ??
+                Math.max(1, Math.round(((garageDoc.fuelCapacity ?? 2000) - 1000) / 1000)),
               safeboxLevel: safeboxLevel,
               safeboxStock: safeboxStock,
               maxPenaltyTickets: maxPenaltyTickets,
+              operational_cost: garageDoc.operational_cost ?? 0,
+              operationalCost: garageDoc.operational_cost ?? 0,
+              fleet_operational_cost: garageDoc.fleet_operational_cost ?? 0,
+              fleetOperationalCost: garageDoc.fleet_operational_cost ?? 0,
+              fuel_operational_cost: garageDoc.fuel_operational_cost ?? 0,
+              fuelOperationalCost: garageDoc.fuel_operational_cost ?? 0,
+              safebox_operational_cost: garageDoc.safebox_operational_cost ?? 0,
+              safeboxOperationalCost: garageDoc.safebox_operational_cost ?? 0,
+              next_payment_date: garageDoc.next_payment_date
+                ? new Date(garageDoc.next_payment_date).toISOString()
+                : null,
+              nextPaymentDate: garageDoc.next_payment_date
+                ? new Date(garageDoc.next_payment_date).toISOString()
+                : null,
             }
           : null,
 
@@ -243,18 +266,40 @@ const handleMeRequest = async (req, res) => {
           mongoId: String(f._id),
           fleetNumber: f.fleet_number || "",
           fleetName: f.fleet_name || "",
-          customName: f.custom_name || "",
-          gameId: String(f.game_id || "1"),
+          customName: f.customName || f.custom_name || "",
+          customImage: f.customImage || f.custom_image || "",
+          gameId: String(f.modelInfo?.game_id ?? f.game_id ?? "1"),
           odometer: f.odometer ?? 0,
           wheels: f.wheels || "4x2",
           status: f.status || "active",
           hasInsurance: Boolean(f.has_insurance),
           maintenanceNeeded: Boolean(f.maintenance_needed),
+          maintenance_needed: Boolean(f.maintenance_needed),
+          maintenanceStartDate: f.maintenance_start_date
+            ? new Date(f.maintenance_start_date).toISOString()
+            : null,
+          maintenance_start_date: f.maintenance_start_date
+            ? new Date(f.maintenance_start_date).toISOString()
+            : null,
+          maintenanceEndDate: f.maintenance_end_date
+            ? new Date(f.maintenance_end_date).toISOString()
+            : null,
+          maintenance_end_date: f.maintenance_end_date
+            ? new Date(f.maintenance_end_date).toISOString()
+            : null,
+          jobsCount: f.jobs_count ?? 0,
+          jobs_count: f.jobs_count ?? 0,
+          totalRevenue: f.total_revenue ?? 0,
+          total_revenue: f.total_revenue ?? 0,
+          totalFuelUsed: f.total_fuel_used ?? 0,
+          total_fuel_used: f.total_fuel_used ?? 0,
+          totalDamageCost: f.total_damage_cost ?? 0,
+          total_damage_cost: f.total_damage_cost ?? 0,
           isAssignedDriver: String(f.driver) === String(user._id),
           inGameId: f.modelInfo?.in_game_id || "",
           modelName: f.modelInfo?.name || "",
           modelType: f.modelInfo?.type || "truck",
-          photoUrl: f.modelInfo?.photo_url || "",
+          photoUrl: f.customImage || f.modelInfo?.photo_url || "",
           brandName: f.brandInfo?.name || "",
           wear: {
             unfixEngine: f.wear?.unfix_engine ?? 0,
@@ -268,17 +313,34 @@ const handleMeRequest = async (req, res) => {
             transmission: f.maintenance?.transmission ?? 70000,
             brakes: f.maintenance?.brakes ?? 35000,
           },
+          lastMaintenance: {
+            engine: f.last_maintenance?.engine ?? 0,
+            tires: f.last_maintenance?.tires ?? 0,
+            transmission: f.last_maintenance?.transmission ?? 0,
+            brakes: f.last_maintenance?.brakes ?? 0,
+          },
+          last_maintenance: {
+            engine: f.last_maintenance?.engine ?? 0,
+            tires: f.last_maintenance?.tires ?? 0,
+            transmission: f.last_maintenance?.transmission ?? 0,
+            brakes: f.last_maintenance?.brakes ?? 0,
+          },
         })),
 
         ongoingJob: ongoingJobDoc
           ? {
               jobId: String(ongoingJobDoc.jobId),
+              gameId: String(ongoingJobDoc.gameId || (ongoingJobDoc.game?.includes("American") ? "2" : "1")),
+              game: ongoingJobDoc.game || (ongoingJobDoc.gameId === "2" ? "American Truck Simulator" : "Euro Truck Simulator 2"),
               gameMode: ongoingJobDoc.gameMode || "sp",
               lockedCargoPrice: ongoingJobDoc.lockedCargoPrice ?? 1.5,
               isSpecialContract: Boolean(ongoingJobDoc.isSpecialContract),
               sourceCity: ongoingJobDoc.sourceCity || "",
               destinationCity: ongoingJobDoc.destinationCity || "",
               cargoName: ongoingJobDoc.cargoName || "",
+              isHardcoreEligibleAtStart: ongoingJobDoc.isHardcoreEligibleAtStart ?? true,
+              hardcoreDisqualified: Boolean(ongoingJobDoc.hardcoreDisqualified),
+              hardcoreDisqualifyReason: ongoingJobDoc.hardcoreDisqualifyReason || null,
             }
           : null,
       },
