@@ -47,7 +47,7 @@ Ekosistem **NismaraTracker** terdiri dari dua repositori/komponen utama yang sal
 
 ### B. Backend Server (`nismara-tracker-server`)
 - **Runtime & Framework**: Node.js + Express (`^4.21.2`) + Mongoose (`^8.10.1`) + CORS + Dotenv.
-- **Database**: MongoDB (`nismara` database) menggunakan skema koleksi yang 100% kompatibel dengan ekosistem Web (`beta.nismara.web.id`) dan Bot Discord Nismara Transport.
+- **Database**: MongoDB (`nismara` database) menggunakan skema koleksi yang 100% kompatibel dengan ekosistem Web (`transport.nismara.web.id`) dan Bot Discord Nismara Transport.
 
 ---
 
@@ -718,7 +718,7 @@ Jalankan perintah berikut dari direktori `D:\Project\Nismara Transport\Project\n
 - **DON'T**: **Jangan pernah** menggunakan CEF Browser (`CefSharp`) atau WebSocket streaming untuk merender UI `tablet_gui`, karena akan membengkakkan ukuran instalasi ratusan megabyte dan menguras resource CPU/RAM pengguna.
 - **DON'T**: **Jangan pernah** meng-hardcode path direktori lokal developer (seperti `F:\SteamLibrary\...`) atau token personal developer (`NSM-...`) sebagai default di kode client maupun companion app.
 - **DON'T**: **Jangan pernah** menggunakan fallback `lastAuthenticatedUser` atau bypass autentikasi `isLocalRequest` di `nismara-tracker-server`, karena pada server produksi 24/7 yang melayani ~300 pengguna (terutama di balik reverse proxy), hal tersebut akan menyebabkan kebocoran/pencampuran sesi antar-driver.
-- **DON'T**: **Jangan pernah** mengarahkan polling telemetri atau pengiriman job langsung ke domain Vercel (`beta.nismara.web.id` / website utama) secara terus-menerus. Selalu gunakan `nismara-tracker-server` mandiri (24/7) agar kuota serverless Vercel aman dari pembengkakan biaya (*overcost*).
+- **DON'T**: **Jangan pernah** mengarahkan polling telemetri atau pengiriman job langsung ke domain Vercel (`transport.nismara.web.id` / `beta.nismara.web.id` / website utama) secara terus-menerus. Selalu gunakan `nismara-tracker-server` mandiri (24/7) agar kuota serverless Vercel aman dari pembengkakan biaya (*overcost*).
 - **DON'T**: **Jangan pernah** mengubah `CMAKE_MSVC_RUNTIME_LIBRARY` menjadi `/MD` (Dynamic DLL) pada build Windows, karena akan menyebabkan plugin gagal dimuat pada komputer driver yang belum menginstal VC++ Redistributable terbaru.
 - **DON'T**: **Jangan pernah** menghapus atau melewati pemeriksaan Gatekeeper di `wndproc_hook.cpp` atau `tablet_gui.cpp`.
 - **DON'T**: **Jangan pernah** melupakan pelepasan (`Release()`) `ID3D11RenderTargetView` di dalam hook `ResizeBuffers` (`src/hooks/dx11_hook.cpp`). Jika RTV tidak dilepas sebelum `ResizeBuffers` asli dipanggil, game ETS2/ATS akan langsung *crash* saat pengguna melakukan Alt-Tab atau mengubah resolusi layar.
