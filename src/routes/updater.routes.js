@@ -8,7 +8,7 @@ const router = express.Router();
  */
 router.get("/version", (_req, res) => {
   const minVersion = process.env.MIN_TRACKER_VERSION || "1.0.0";
-  const latestVersion = "1.0.2";
+  const latestVersion = "1.0.3-beta";
   res.json({
     success: true,
     minVersion,
@@ -28,8 +28,8 @@ router.get("/update.json", (req, res) => {
   const baseUrl = configuredBaseUrl || `${protocol}://${host}`;
 
   res.json({
-    version: "1.0.2",
-    notes: "Nismara Companion v1.0.2: Close Beta Release — 3-pillar hardcore validation, adaptive ETS2/ATS speed limits, interactive phone positioning, and auto-updater.",
+    version: "1.0.3-beta",
+    notes: "Nismara Companion v1.0.3-beta: Close Beta Update — Anti-crash runtime verification (#5), null JSON safe sync (#2), resumed job hydration (#3), transit warp bypass & 2D Euclidean coordinate anti-teleport (#4).",
     pub_date: new Date().toISOString(),
     platforms: {
       "windows-x86_64": {
