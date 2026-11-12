@@ -391,6 +391,7 @@ export async function processJobStart(db, user, payload) {
         isHardcoreEligibleAtStart: existingOngoing.isHardcoreEligibleAtStart ?? true,
         hardcoreDisqualified: Boolean(existingOngoing.hardcoreDisqualified),
         hardcoreDisqualifyReason: existingOngoing.hardcoreDisqualifyReason || null,
+        checkpoint: existingOngoing.checkpoint || null,
       };
     }
 
@@ -683,7 +684,7 @@ export async function processJobComplete(db, user, payload) {
 
   const rawDrivenKm = Math.max(
     1,
-    Math.round(Number(payload.distanceKm || driverJob.plannedDistanceKm || 1))
+    Math.round(Number(payload.distanceKm || driverJob.checkpoint?.drivenDistanceKm || driverJob.plannedDistanceKm || 1))
   );
   const plannedKm = Math.max(
     0,
@@ -694,15 +695,31 @@ export async function processJobComplete(db, user, payload) {
   const km = plannedKm > 0 ? Math.min(rawDrivenKm, maxAllowedKm) : rawDrivenKm;
   const durationSeconds = Math.max(
     1,
-    Math.round(Number(payload.durationSeconds || 0))
+    Math.round(Number(payload.durationSeconds || driverJob.checkpoint?.durationSeconds || 0))
   );
-  const fuelUsedL = Math.max(0, Number(payload.fuelUsedL || 0));
-  const maxSpeedKmh = Number(payload.maxSpeedKmh || 0);
+  const fuelUsedL = Math.max(
+    0,
+    Number(payload.fuelUsedL ?? driverJob.checkpoint?.fuelUsedLiters ?? 0)
+  );
+  const maxSpeedKmh = Math.max(
+    Number(payload.maxSpeedKmh || 0),
+    Number(driverJob.checkpoint?.maxSpeedKmh || 0)
+  );
 
   // Damage percentages (0 - 100)
-  const vehicleDmg = Math.max(0, Math.round(Number(payload.vehicleDamagePct || 0)));
-  const trailerDmg = Math.max(0, Math.round(Number(payload.trailerDamagePct || 0)));
-  const cargoDmg = Math.max(0, Math.round(Number(payload.cargoDamagePct || 0)));
+  const chkVehicleDmg = driverJob.checkpoint?.accumVehicleDamage
+    ? Math.round(driverJob.checkpoint.accumVehicleDamage * 100)
+    : 0;
+  const chkTrailerDmg = driverJob.checkpoint?.accumTrailerDamage
+    ? Math.round(driverJob.checkpoint.accumTrailerDamage * 100)
+    : 0;
+  const chkCargoDmg = driverJob.checkpoint?.accumCargoDamage
+    ? Math.round(driverJob.checkpoint.accumCargoDamage * 100)
+    : 0;
+
+  const vehicleDmg = Math.max(0, Math.round(Number(payload.vehicleDamagePct ?? chkVehicleDmg)));
+  const trailerDmg = Math.max(0, Math.round(Number(payload.trailerDamagePct ?? chkTrailerDmg)));
+  const cargoDmg = Math.max(0, Math.round(Number(payload.cargoDamagePct ?? chkCargoDmg)));
 
   // Estimated repair costs for service calculation (matching Trucky scale)
   const rawVehicleDmgCost = Number(payload.vehicleDamageCost ?? vehicleDmg * 250);
@@ -1257,10 +1274,25 @@ export async function processJobComplete(db, user, payload) {
         hardcoreRating: hcEval.deliveryRating.totalStars,
         hardcorePoints: hcEval.hardcorePoints,
         isHardcoreEligibleAtStart: driverJob.isHardcoreEligibleAtStart ?? true,
-        hardcoreDisqualifiedDuringTrip: Boolean(payload.hardcoreDisqualifiedDuringTrip),
+        hardcoreDisqualifiedDuringTrip: Boolean(
+          payload.hardcoreDisqualifiedDuringTrip ||
+          driverJob.hardcoreDisqualified ||
+          driverJob.checkpoint?.hardcoreDisqualified
+        ),
         deliveryRating: hcEval.deliveryRating,
         hardcoreDisqualifyReason: hcEval.disqualifyReason,
         hardcoreStats: hcEval.hardcoreStats,
+        routePath: (function () {
+          const existingPath = Array.isArray(driverJob.routePath) ? driverJob.routePath : [];
+          const newPoints = Array.isArray(payload.newRoutePoints)
+            ? payload.newRoutePoints
+            : Array.isArray(payload.routePath)
+            ? payload.routePath
+            : [];
+          const combined = existingPath.concat(newPoints);
+          if (combined.length > 15000) return combined.slice(-15000);
+          return combined;
+        })(),
         damage: {
           vehicle: vehicleDmg,
           trailer: trailerDmg,
@@ -1452,4 +1484,100 @@ export async function processJobCancel(db, user, payload) {
     penaltyPointsAdded: CANCEL_PENALTY_POINTS,
   };
 }
+
+/**
+ * Processes periodic / event-based job checkpointing.
+ * Stores progress in `jobhistories.checkpoint` and appends sampled route coordinates to `routePath`.
+ */
+export async function processJobCheckpoint(db, user, payload) {
+  const discordId = String(user.discordId || "");
+  const gameId = normalizeGameId(payload.gameId);
+  const reqJobId = payload.jobId ? String(payload.jobId) : "";
+
+  const filter = {
+    guildId: NISMARA_GUILD_ID,
+    driverId: discordId,
+    gameId: gameId,
+    jobStatus: "ONGOING",
+  };
+  if (reqJobId) {
+    filter.jobId = reqJobId;
+  }
+
+  const ongoingJob = await db
+    .collection("jobhistories")
+    .findOne(filter, { sort: { createdAt: -1 } });
+
+  if (!ongoingJob) {
+    return {
+      saved: false,
+      message: "No active ONGOING job found for checkpoint.",
+    };
+  }
+
+  const now = new Date();
+  const checkpointData = {
+    drivenDistanceKm: Math.max(0, Number(payload.drivenDistanceKm || 0)),
+    fuelUsedLiters: Math.max(0, Number(payload.fuelUsedLiters || 0)),
+    maxSpeedKmh: Math.max(
+      Number(payload.maxSpeedKmh || 0),
+      Number(ongoingJob.checkpoint?.maxSpeedKmh || 0)
+    ),
+    fines: Array.isArray(payload.fines) ? payload.fines : ongoingJob.checkpoint?.fines || [],
+    accumVehicleDamage: Math.max(0, Number(payload.accumVehicleDamage || 0)),
+    accumTrailerDamage: Math.max(0, Number(payload.accumTrailerDamage || 0)),
+    accumCargoDamage: Math.max(0, Number(payload.accumCargoDamage || 0)),
+    durationSeconds: Math.max(0, Math.round(Number(payload.durationSeconds || 0))),
+    lastPosX: Number(payload.lastPosX || 0),
+    lastPosY: Number(payload.lastPosY || 0),
+    lastPosZ: Number(payload.lastPosZ || 0),
+    hardcoreDisqualified: Boolean(payload.hardcoreDisqualified || ongoingJob.hardcoreDisqualified),
+    hardcoreDisqualifyReason:
+      payload.hardcoreDisqualifyReason || ongoingJob.hardcoreDisqualifyReason || "",
+    savedAt: now,
+  };
+
+  const updateDoc = {
+    $set: {
+      checkpoint: checkpointData,
+      updatedAt: now,
+    },
+  };
+
+  // If driver was disqualified in this session, flag it on the ongoing job
+  if (payload.hardcoreDisqualified && !ongoingJob.hardcoreDisqualified) {
+    updateDoc.$set.hardcoreDisqualified = true;
+    updateDoc.$set.hardcoreDisqualifyReason =
+      payload.hardcoreDisqualifyReason || "Disqualified during driving";
+  }
+
+  // Append new route breadcrumbs if provided
+  if (Array.isArray(payload.newRoutePoints) && payload.newRoutePoints.length > 0) {
+    const sanitizedPoints = payload.newRoutePoints
+      .filter((pt) => pt && typeof pt.x === "number" && typeof pt.z === "number")
+      .map((pt) => ({
+        x: Math.round(pt.x),
+        z: Math.round(pt.z),
+        spd: Math.round(pt.spd || 0),
+      }));
+
+    if (sanitizedPoints.length > 0) {
+      updateDoc.$push = {
+        routePath: {
+          $each: sanitizedPoints,
+          $slice: -15000,
+        },
+      };
+    }
+  }
+
+  await db.collection("jobhistories").updateOne({ _id: ongoingJob._id }, updateDoc);
+
+  return {
+    saved: true,
+    jobId: String(ongoingJob.jobId),
+    savedAt: now.toISOString(),
+  };
+}
+
 

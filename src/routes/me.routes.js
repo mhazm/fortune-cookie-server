@@ -341,6 +341,26 @@ const handleMeRequest = async (req, res) => {
               isHardcoreEligibleAtStart: ongoingJobDoc.isHardcoreEligibleAtStart ?? true,
               hardcoreDisqualified: Boolean(ongoingJobDoc.hardcoreDisqualified),
               hardcoreDisqualifyReason: ongoingJobDoc.hardcoreDisqualifyReason || "",
+              checkpoint: ongoingJobDoc.checkpoint
+                ? {
+                    drivenDistanceKm: ongoingJobDoc.checkpoint.drivenDistanceKm ?? 0,
+                    fuelUsedLiters: ongoingJobDoc.checkpoint.fuelUsedLiters ?? 0,
+                    maxSpeedKmh: ongoingJobDoc.checkpoint.maxSpeedKmh ?? 0,
+                    fines: ongoingJobDoc.checkpoint.fines || [],
+                    accumVehicleDamage: ongoingJobDoc.checkpoint.accumVehicleDamage ?? 0,
+                    accumTrailerDamage: ongoingJobDoc.checkpoint.accumTrailerDamage ?? 0,
+                    accumCargoDamage: ongoingJobDoc.checkpoint.accumCargoDamage ?? 0,
+                    durationSeconds: ongoingJobDoc.checkpoint.durationSeconds ?? 0,
+                    lastPosX: ongoingJobDoc.checkpoint.lastPosX ?? 0,
+                    lastPosY: ongoingJobDoc.checkpoint.lastPosY ?? 0,
+                    lastPosZ: ongoingJobDoc.checkpoint.lastPosZ ?? 0,
+                    hardcoreDisqualified: Boolean(ongoingJobDoc.checkpoint.hardcoreDisqualified),
+                    hardcoreDisqualifyReason: ongoingJobDoc.checkpoint.hardcoreDisqualifyReason || "",
+                    savedAt: ongoingJobDoc.checkpoint.savedAt
+                      ? new Date(ongoingJobDoc.checkpoint.savedAt).toISOString()
+                      : null,
+                  }
+                : null,
             }
           : null,
       },

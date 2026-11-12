@@ -4,6 +4,7 @@ import {
   processJobStart,
   processJobComplete,
   processJobCancel,
+  processJobCheckpoint,
 } from "../services/jobProcessor.js";
 
 const router = express.Router();
@@ -45,6 +46,27 @@ router.post("/jobs/complete", authTracker, async (req, res) => {
     return res.status(400).json({
       success: false,
       error: err.message || "Failed to complete job.",
+    });
+  }
+});
+
+/**
+ * POST /api/tracker/jobs/checkpoint
+ * Saves mid-job progress (driven distance, fuel, damage, coordinates, breadcrumb points)
+ * to prevent data loss on crashes or quit-and-resume.
+ */
+router.post("/jobs/checkpoint", authTracker, async (req, res) => {
+  try {
+    const result = await processJobCheckpoint(req.db, req.driverUser, req.body || {});
+    return res.json({
+      success: true,
+      data: result,
+    });
+  } catch (err) {
+    console.error("[POST /api/tracker/jobs/checkpoint Error]:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Failed to save job checkpoint.",
     });
   }
 });

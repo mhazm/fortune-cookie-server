@@ -8,6 +8,8 @@ import pointsRoutes from "./src/routes/points.routes.js";
 import updaterRoutes from "./src/routes/updater.routes.js";
 import eventsRoutes from "./src/routes/events.routes.js";
 import newsRoutes from "./src/routes/news.routes.js";
+import telemetryRoutes from "./src/routes/telemetry.routes.js";
+import { initRedis } from "./src/config/redis.js";
 
 dotenv.config();
 
@@ -41,6 +43,7 @@ app.get("/health", (_req, res) => {
 // Mount Tracker API routes
 app.use("/api/tracker", meRoutes);
 app.use("/api/tracker", jobsRoutes);
+app.use("/api/tracker", telemetryRoutes);
 app.use("/api/tracker/points", pointsRoutes);
 app.use("/api/tracker", updaterRoutes);
 app.use("/api/tracker/events", eventsRoutes);
@@ -50,13 +53,17 @@ app.use("/api/tracker/articles", newsRoutes);
 async function bootstrap() {
   try {
     await connectDB();
+    initRedis();
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`=========================================================`);
       console.log(`🚀 Nismara Tracker Server running on http://localhost:${PORT}`);
       console.log(`   - GET  http://localhost:${PORT}/api/tracker/me`);
       console.log(`   - POST http://localhost:${PORT}/api/tracker/jobs/start`);
+      console.log(`   - POST http://localhost:${PORT}/api/tracker/jobs/checkpoint`);
       console.log(`   - POST http://localhost:${PORT}/api/tracker/jobs/complete`);
       console.log(`   - POST http://localhost:${PORT}/api/tracker/jobs/cancel`);
+      console.log(`   - POST http://localhost:${PORT}/api/tracker/telemetry/live`);
+      console.log(`   - GET  http://localhost:${PORT}/api/tracker/telemetry/live-map`);
       console.log(`   - POST http://localhost:${PORT}/api/tracker/points/pay`);
       console.log(`   - POST http://localhost:${PORT}/api/tracker/points/use-ticket`);
       console.log(`=========================================================`);
