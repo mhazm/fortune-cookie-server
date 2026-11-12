@@ -8,7 +8,7 @@ const router = express.Router();
  */
 router.get("/version", (_req, res) => {
   const minVersion = process.env.MIN_TRACKER_VERSION || "1.0.0";
-  const latestVersion = "1.0.1";
+  const latestVersion = "1.0.2";
   res.json({
     success: true,
     minVersion,
@@ -28,8 +28,8 @@ router.get("/update.json", (req, res) => {
   const baseUrl = configuredBaseUrl || `${protocol}://${host}`;
 
   res.json({
-    version: "1.0.1",
-    notes: "Nismara Companion v1.0.1: Official Desktop VTC Hub, Companion Phone Nismara OS, Cross-Platform Gatekeeper, auto-updater, and fleet telemetry.",
+    version: "1.0.2",
+    notes: "Nismara Companion v1.0.2: Close Beta Release — 3-pillar hardcore validation, adaptive ETS2/ATS speed limits, interactive phone positioning, and auto-updater.",
     pub_date: new Date().toISOString(),
     platforms: {
       "windows-x86_64": {
