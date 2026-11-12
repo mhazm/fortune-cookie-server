@@ -254,10 +254,10 @@ const handleMeRequest = async (req, res) => {
               safeboxOperationalCost: garageDoc.safebox_operational_cost ?? 0,
               next_payment_date: garageDoc.next_payment_date
                 ? new Date(garageDoc.next_payment_date).toISOString()
-                : null,
+                : "",
               nextPaymentDate: garageDoc.next_payment_date
                 ? new Date(garageDoc.next_payment_date).toISOString()
-                : null,
+                : "",
             }
           : null,
 
@@ -277,16 +277,16 @@ const handleMeRequest = async (req, res) => {
           maintenance_needed: Boolean(f.maintenance_needed),
           maintenanceStartDate: f.maintenance_start_date
             ? new Date(f.maintenance_start_date).toISOString()
-            : null,
+            : "",
           maintenance_start_date: f.maintenance_start_date
             ? new Date(f.maintenance_start_date).toISOString()
-            : null,
+            : "",
           maintenanceEndDate: f.maintenance_end_date
             ? new Date(f.maintenance_end_date).toISOString()
-            : null,
+            : "",
           maintenance_end_date: f.maintenance_end_date
             ? new Date(f.maintenance_end_date).toISOString()
-            : null,
+            : "",
           jobsCount: f.jobs_count ?? 0,
           jobs_count: f.jobs_count ?? 0,
           totalRevenue: f.total_revenue ?? 0,
@@ -340,7 +340,7 @@ const handleMeRequest = async (req, res) => {
               cargoName: ongoingJobDoc.cargoName || "",
               isHardcoreEligibleAtStart: ongoingJobDoc.isHardcoreEligibleAtStart ?? true,
               hardcoreDisqualified: Boolean(ongoingJobDoc.hardcoreDisqualified),
-              hardcoreDisqualifyReason: ongoingJobDoc.hardcoreDisqualifyReason || null,
+              hardcoreDisqualifyReason: ongoingJobDoc.hardcoreDisqualifyReason || "",
             }
           : null,
       },
