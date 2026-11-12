@@ -90,3 +90,4 @@ router.get("/telemetry/live-map", async (req, res) => {
 });
 
 export default router;
+
