@@ -31,7 +31,7 @@ const handleMeRequest = async (req, res) => {
       ongoingFilter.gameId = mappedGameId;
     }
 
-    const [currencyDoc, pointsDoc, garageDoc, fleetDocs, ongoingJobDoc, guildSettingsDoc] = await Promise.all([
+    const [currencyDoc, pointsDoc, garageDoc, fleetDocs, ongoingJobDoc, guildSettingsDoc, lastCompletedJobDoc] = await Promise.all([
       user.discordId
         ? db.collection("currencies").findOne({
             userId: String(user.discordId),
@@ -94,6 +94,16 @@ const handleMeRequest = async (req, res) => {
         ? db.collection("jobhistories").findOne(ongoingFilter, { sort: { createdAt: -1 } })
         : Promise.resolve(null),
       db.collection("guildsettings").findOne({ guildId: NISMARA_GUILD_ID }),
+      user.discordId
+        ? db.collection("jobhistories").findOne(
+            {
+              guildId: NISMARA_GUILD_ID,
+              driverId: String(user.discordId),
+              jobStatus: "COMPLETED",
+            },
+            { sort: { completedAt: -1, createdAt: -1 } }
+          )
+        : Promise.resolve(null),
     ]);
 
     const actualNC =
@@ -360,6 +370,30 @@ const handleMeRequest = async (req, res) => {
                       ? new Date(ongoingJobDoc.checkpoint.savedAt).toISOString()
                       : null,
                   }
+                : null,
+            }
+          : null,
+
+        lastCompletedJob: lastCompletedJobDoc
+          ? {
+              jobId: String(lastCompletedJobDoc.jobId),
+              game: lastCompletedJobDoc.game || (lastCompletedJobDoc.gameId === "2" ? "American Truck Simulator" : "Euro Truck Simulator 2"),
+              sourceCity: lastCompletedJobDoc.sourceCity || "",
+              destinationCity: lastCompletedJobDoc.destinationCity || "",
+              cargoName: lastCompletedJobDoc.cargoName || "",
+              distanceKm: Math.round(lastCompletedJobDoc.distanceKm ?? lastCompletedJobDoc.checkpoint?.drivenDistanceKm ?? 0),
+              revenue: lastCompletedJobDoc.revenue ?? 0,
+              damagePercentage: parseFloat(
+                (
+                  Math.max(
+                    lastCompletedJobDoc.checkpoint?.accumVehicleDamage ?? 0,
+                    lastCompletedJobDoc.checkpoint?.accumTrailerDamage ?? 0,
+                    lastCompletedJobDoc.checkpoint?.accumCargoDamage ?? 0
+                  ) * 100
+                ).toFixed(1)
+              ),
+              completedAt: lastCompletedJobDoc.completedAt
+                ? new Date(lastCompletedJobDoc.completedAt).toISOString()
                 : null,
             }
           : null,
